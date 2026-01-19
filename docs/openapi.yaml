@@ -1,0 +1,1773 @@
+openapi: 3.0.3
+info:
+  title: Family App API
+  version: 1.0.0-draft
+  description: >
+    OpenAPI draft for v1.0 (local PC). Auth via Supabase JWT, JST-based aggregates,
+    delta sync, idempotent writes, optimistic concurrency with warnings, logical deletion.
+servers:
+  - url: https://{baseUrl}/api/v1
+    variables:
+      baseUrl:
+        default: localhost
+        description: Base host (tunnel URL in v1.0)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Meta
+  - name: Settings
+  - name: Home
+  - name: Sync
+  - name: Messages
+  - name: Inventory
+  - name: Shopping
+  - name: Receipts
+  - name: OCR
+  - name: Schedules
+  - name: Themes
+  - name: UserMedia
+  - name: Assets
+  - name: Devices
+  - name: Warnings
+
+paths:
+  /me:
+    get:
+      tags: [Meta]
+      summary: Resolve current member and household from JWT
+      operationId: getMe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /settings:
+    get:
+      tags: [Settings]
+      summary: Get household shared settings
+      operationId: getSettings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    patch:
+      tags: [Settings]
+      summary: Update household shared settings (optimistic concurrency + idempotent)
+      operationId: patchSettings
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /home:
+    get:
+      tags: [Home]
+      summary: Get home summary (JST-based aggregates)
+      operationId: getHome
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeSummary"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /sync:
+    get:
+      tags: [Sync]
+      summary: Delta sync (returns domain arrays in one response)
+      operationId: getSync
+      parameters:
+        - $ref: "#/components/parameters/Since"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /messages:
+    get:
+      tags: [Messages]
+      summary: List messages (logical deletion included via sync; this endpoint returns non-deleted by default)
+      operationId: listMessages
+      parameters:
+        - $ref: "#/components/parameters/IncludeDeleted"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      tags: [Messages]
+      summary: Create a message (idempotent)
+      operationId: createMessage
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /messages/{id}:
+    delete:
+      tags: [Messages]
+      summary: Logically delete a message (idempotent + optimistic concurrency)
+      operationId: deleteMessage
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Deleted (logical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /messages/{id}/read:
+    put:
+      tags: [Messages]
+      summary: Mark message as read for current member (idempotent + optimistic concurrency)
+      operationId: markMessageRead
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /messages/{id}/reactions/{type}:
+    put:
+      tags: [Messages]
+      summary: Upsert reaction for current member (idempotent + optimistic concurrency)
+      operationId: upsertReaction
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/ReactionType"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Reaction upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      tags: [Messages]
+      summary: Remove reaction for current member (idempotent + optimistic concurrency)
+      operationId: deleteReaction
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/ReactionType"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Reaction removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /inventory/items:
+    get:
+      tags: [Inventory]
+      summary: List inventory items
+      operationId: listInventoryItems
+      parameters:
+        - $ref: "#/components/parameters/IncludeDeleted"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItemListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      tags: [Inventory]
+      summary: Create inventory item (idempotent)
+      operationId: createInventoryItem
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /inventory/items/{id}:
+    patch:
+      tags: [Inventory]
+      summary: Update inventory item (idempotent + optimistic concurrency)
+      operationId: patchInventoryItem
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      tags: [Inventory]
+      summary: Logically delete inventory item (idempotent + optimistic concurrency)
+      operationId: deleteInventoryItem
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Deleted (logical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /inventory/lots:
+    get:
+      tags: [Inventory]
+      summary: List inventory lots
+      operationId: listInventoryLots
+      parameters:
+        - $ref: "#/components/parameters/IncludeDeleted"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryLotListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      tags: [Inventory]
+      summary: Create inventory lot (idempotent)
+      operationId: createInventoryLot
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryLotCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /inventory/lots/{id}:
+    patch:
+      tags: [Inventory]
+      summary: Update inventory lot (idempotent + optimistic concurrency)
+      operationId: patchInventoryLot
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryLotUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      tags: [Inventory]
+      summary: Logically delete inventory lot (idempotent + optimistic concurrency)
+      operationId: deleteInventoryLot
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Deleted (logical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /shopping/items:
+    get:
+      tags: [Shopping]
+      summary: List shopping items
+      operationId: listShoppingItems
+      parameters:
+        - $ref: "#/components/parameters/IncludeDeleted"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShoppingItemListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      tags: [Shopping]
+      summary: Create shopping item (idempotent)
+      operationId: createShoppingItem
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShoppingItemCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /shopping/items/{id}:
+    patch:
+      tags: [Shopping]
+      summary: Update shopping item (idempotent + optimistic concurrency)
+      operationId: patchShoppingItem
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShoppingItemUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      tags: [Shopping]
+      summary: Logically delete shopping item (idempotent + optimistic concurrency)
+      operationId: deleteShoppingItem
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Deleted (logical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /shopping/items/{id}/complete:
+    put:
+      tags: [Shopping]
+      summary: Mark shopping item as complete (idempotent + optimistic concurrency)
+      operationId: completeShoppingItem
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /receipts:
+    get:
+      tags: [Receipts]
+      summary: List receipts (expenses are unified into receipts)
+      operationId: listReceipts
+      parameters:
+        - $ref: "#/components/parameters/IncludeDeleted"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    post:
+      tags: [Receipts]
+      summary: Create receipt (idempotent)
+      operationId: createReceipt
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /receipts/{id}:
+    patch:
+      tags: [Receipts]
+      summary: Update receipt (idempotent + optimistic concurrency)
+      operationId: patchReceipt
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+    delete:
+      tags: [Receipts]
+      summary: Logically delete receipt (idempotent + optimistic concurrency)
+      operationId: deleteReceipt
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Deleted (logical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /receipts/{id}/ocr:
+    post:
+      tags: [OCR]
+      summary: Run OCR on-demand (Tesseract via internal Python service)
+      operationId: runReceiptOcr
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OcrRunRequest"
+      responses:
+        "200":
+          description: OCR result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /schedules/self:
+    get:
+      tags: [Schedules]
+      summary: List schedules for self (details included)
+      operationId: listSchedulesSelf
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleSelfListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /schedules/family:
+    get:
+      tags: [Schedules]
+      summary: List schedule flags for family view (hasEvent only)
+      operationId: listSchedulesFamily
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleFamilyListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /themes:
+    get:
+      tags: [Themes]
+      summary: List themes for current member (personal scope)
+      operationId: listThemes
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThemeListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /themes/active:
+    put:
+      tags: [Themes]
+      summary: Set active theme (idempotent + optimistic concurrency)
+      operationId: setActiveTheme
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThemeSetActiveRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /user-media:
+    post:
+      tags: [UserMedia]
+      summary: Register user media (image only) (idempotent)
+      operationId: createUserMedia
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserMediaCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /user-media/{id}:
+    delete:
+      tags: [UserMedia]
+      summary: Logically delete user media (idempotent + optimistic concurrency)
+      operationId: deleteUserMedia
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Deleted (logical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /assets:
+    post:
+      tags: [Assets]
+      summary: Create asset metadata (v1.0 local storage path returned) (idempotent)
+      operationId: createAsset
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetCreateResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /assets/{id}:
+    get:
+      tags: [Assets]
+      summary: Get asset metadata (includes localPath)
+      operationId: getAsset
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Asset"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /devices/apns:
+    put:
+      tags: [Devices]
+      summary: Upsert APNs device token (idempotent + optimistic concurrency)
+      operationId: upsertApnsDevice
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApnsDeviceUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /devices/webpush:
+    put:
+      tags: [Devices]
+      summary: Upsert Web Push subscription (idempotent + optimistic concurrency)
+      operationId: upsertWebPushDevice
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebPushDeviceUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /devices/{id}:
+    delete:
+      tags: [Devices]
+      summary: Disable a device registration (logical) (idempotent + optimistic concurrency)
+      operationId: deleteDevice
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionedWriteRequest"
+      responses:
+        "200":
+          description: Disabled (logical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteResult"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+  /warnings:
+    get:
+      tags: [Warnings]
+      summary: List warnings (also included in sync)
+      operationId: listWarnings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WarningListResponse"
+        default:
+          $ref: "#/components/responses/DefaultError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Since:
+      name: since
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+      description: Last synced timestamp (UTC ISO8601). Server returns entities with updatedAt > since.
+    IncludeDeleted:
+      name: includeDeleted
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: If true, include logically deleted records (deletedAt != null).
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Client-generated UUID for idempotent write operations.
+    ReactionType:
+      name: type
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/ReactionType"
+
+  responses:
+    DefaultError:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          example: UNAUTHORIZED
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        requestId:
+          type: string
+          example: req_01HXYZ...
+
+    BaseEntity:
+      type: object
+      required: [id, householdId, createdAt, updatedAt, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        householdId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    WriteResult:
+      type: object
+      required: [id, serverNow]
+      properties:
+        id:
+          type: string
+          format: uuid
+        serverNow:
+          type: string
+          format: date-time
+        warningIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    VersionedWriteRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+
+    MeResponse:
+      type: object
+      required: [memberId, householdId]
+      properties:
+        memberId:
+          type: string
+          format: uuid
+        householdId:
+          type: string
+          format: uuid
+
+    Settings:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [inventoryExpiryThresholdDays]
+          properties:
+            inventoryExpiryThresholdDays:
+              type: integer
+              minimum: 1
+              default: 3
+              description: Household shared threshold in days (JST-based) for "expiring" inventory count/notifications.
+
+    SettingsUpdateRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        inventoryExpiryThresholdDays:
+          type: integer
+          minimum: 1
+
+    HomeSummary:
+      type: object
+      required:
+        [unreadMessageCount, hasScheduleToday, inventoryExpiringCount, weeklySpendingTotal, shoppingTodoCount, serverNow]
+      properties:
+        unreadMessageCount:
+          type: integer
+          minimum: 0
+        hasScheduleToday:
+          type: boolean
+        inventoryExpiringCount:
+          type: integer
+          minimum: 0
+          description: Count of inventory lots expiring within Settings.inventoryExpiryThresholdDays (JST).
+        weeklySpendingTotal:
+          type: integer
+          minimum: 0
+          description: Weekly spending total in JPY (Mon-start, JST).
+        shoppingTodoCount:
+          type: integer
+          minimum: 0
+        serverNow:
+          type: string
+          format: date-time
+
+    SyncResponse:
+      type: object
+      required: [serverNow, data]
+      properties:
+        serverNow:
+          type: string
+          format: date-time
+        nextCursor:
+          type: string
+          nullable: true
+        data:
+          $ref: "#/components/schemas/SyncData"
+
+    SyncData:
+      type: object
+      required:
+        [settings, messages, messageReads, reactions, inventoryItems, inventoryLots, shoppingItems, receipts,
+         schedulesSelf, schedulesFamily, themes, assets, warnings]
+      properties:
+        settings:
+          $ref: "#/components/schemas/Settings"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        messageReads:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageRead"
+        reactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reaction"
+        inventoryItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryItem"
+        inventoryLots:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryLot"
+        shoppingItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShoppingItem"
+        receipts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Receipt"
+        schedulesSelf:
+          type: array
+          description: Returned only for self; otherwise empty array.
+          items:
+            $ref: "#/components/schemas/ScheduleSelf"
+        schedulesFamily:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleFamily"
+        themes:
+          type: array
+          description: Returned only for self; otherwise empty array.
+          items:
+            $ref: "#/components/schemas/Theme"
+        assets:
+          type: array
+          description: Returned only for self; otherwise empty array.
+          items:
+            $ref: "#/components/schemas/Asset"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Warning"
+
+    # -----------------------
+    # Messages
+    # -----------------------
+    Message:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [senderMemberId, body]
+          properties:
+            senderMemberId:
+              type: string
+              format: uuid
+            body:
+              type: string
+              maxLength: 5000
+
+    MessageCreateRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          maxLength: 5000
+
+    MessageListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+
+    MessageRead:
+      type: object
+      required: [messageId, memberId, readAt]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+        readAt:
+          type: string
+          format: date-time
+
+    ReactionType:
+      type: string
+      enum: [LIKE, OK, THANKS]
+      description: Minimal reaction types for v1.0
+
+    Reaction:
+      type: object
+      required: [messageId, memberId, type, createdAt]
+      properties:
+        messageId:
+          type: string
+          format: uuid
+        memberId:
+          type: string
+          format: uuid
+        type:
+          $ref: "#/components/schemas/ReactionType"
+        createdAt:
+          type: string
+          format: date-time
+
+    # -----------------------
+    # Inventory
+    # -----------------------
+    InventoryItem:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              maxLength: 200
+            category:
+              type: string
+              maxLength: 100
+              nullable: true
+
+    InventoryItemCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        category:
+          type: string
+          maxLength: 100
+          nullable: true
+
+    InventoryItemUpdateRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          maxLength: 200
+        category:
+          type: string
+          maxLength: 100
+          nullable: true
+
+    InventoryItemListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryItem"
+
+    InventoryLot:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [itemId, quantity]
+          properties:
+            itemId:
+              type: string
+              format: uuid
+            quantity:
+              type: number
+              minimum: 0
+            unit:
+              type: string
+              maxLength: 20
+              nullable: true
+            expiryDate:
+              type: string
+              format: date
+              nullable: true
+              description: Date only (YYYY-MM-DD). Evaluated in JST for expiring threshold.
+            note:
+              type: string
+              maxLength: 500
+              nullable: true
+
+    InventoryLotCreateRequest:
+      type: object
+      required: [itemId, quantity]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        quantity:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+          maxLength: 20
+          nullable: true
+        expiryDate:
+          type: string
+          format: date
+          nullable: true
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    InventoryLotUpdateRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        quantity:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+          maxLength: 20
+          nullable: true
+        expiryDate:
+          type: string
+          format: date
+          nullable: true
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    InventoryLotListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryLot"
+
+    # -----------------------
+    # Shopping
+    # -----------------------
+    ShoppingItem:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              maxLength: 200
+            quantity:
+              type: number
+              minimum: 0
+              nullable: true
+            note:
+              type: string
+              maxLength: 500
+              nullable: true
+            doneAt:
+              type: string
+              format: date-time
+              nullable: true
+
+    ShoppingItemCreateRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        quantity:
+          type: number
+          minimum: 0
+          nullable: true
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    ShoppingItemUpdateRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          maxLength: 200
+        quantity:
+          type: number
+          minimum: 0
+          nullable: true
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    ShoppingItemListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShoppingItem"
+
+    # -----------------------
+    # Receipts (Expenses unified)
+    # -----------------------
+    Receipt:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [spentAt, totalAmount]
+          properties:
+            spentAt:
+              type: string
+              format: date
+              description: Date only (YYYY-MM-DD). Weekly aggregates are Mon-start, JST.
+            totalAmount:
+              type: integer
+              minimum: 0
+              description: Total amount in JPY (integer).
+            storeName:
+              type: string
+              maxLength: 200
+              nullable: true
+            assetId:
+              type: string
+              format: uuid
+              nullable: true
+            ocrStatus:
+              type: string
+              enum: [NONE, REQUESTED, SUCCEEDED, FAILED]
+              nullable: true
+
+    ReceiptCreateRequest:
+      type: object
+      required: [spentAt, totalAmount]
+      properties:
+        spentAt:
+          type: string
+          format: date
+        totalAmount:
+          type: integer
+          minimum: 0
+        storeName:
+          type: string
+          maxLength: 200
+          nullable: true
+        assetId:
+          type: string
+          format: uuid
+          nullable: true
+
+    ReceiptUpdateRequest:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        spentAt:
+          type: string
+          format: date
+        totalAmount:
+          type: integer
+          minimum: 0
+        storeName:
+          type: string
+          maxLength: 200
+          nullable: true
+        assetId:
+          type: string
+          format: uuid
+          nullable: true
+
+    ReceiptListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Receipt"
+
+    # -----------------------
+    # OCR (Tesseract)
+    # -----------------------
+    OcrRunRequest:
+      type: object
+      description: Optional parameters (v1.0 keeps minimal; crop reserved for vNext)
+      properties:
+        mode:
+          type: string
+          enum: [FULLTEXT, TOTAL_ONLY]
+          default: FULLTEXT
+        crop:
+          type: object
+          nullable: true
+          description: Reserved for vNext. Crop rectangle in pixels.
+          properties:
+            x:
+              type: integer
+              minimum: 0
+            y:
+              type: integer
+              minimum: 0
+            w:
+              type: integer
+              minimum: 1
+            h:
+              type: integer
+              minimum: 1
+
+    OcrResult:
+      type: object
+      required: [engine, rawText]
+      properties:
+        engine:
+          type: string
+          enum: [tesseract]
+        rawText:
+          type: string
+        totalCandidates:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+        imageHash:
+          type: string
+          nullable: true
+
+    # -----------------------
+    # Schedules
+    # -----------------------
+    ScheduleSelf:
+      type: object
+      required: [startAt, endAt]
+      properties:
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        title:
+          type: string
+          maxLength: 200
+          nullable: true
+        location:
+          type: string
+          maxLength: 200
+          nullable: true
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+
+    ScheduleFamily:
+      type: object
+      required: [date, hasEvent]
+      properties:
+        date:
+          type: string
+          format: date
+          description: Date only (YYYY-MM-DD), interpreted in JST.
+        hasEvent:
+          type: boolean
+
+    ScheduleSelfListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleSelf"
+
+    ScheduleFamilyListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleFamily"
+
+    # -----------------------
+    # Themes / UserMedia / Assets (personal)
+    # -----------------------
+    Theme:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [name, isActive, themeJson]
+          properties:
+            name:
+              type: string
+              maxLength: 200
+            isActive:
+              type: boolean
+            themeJson:
+              type: object
+              additionalProperties: true
+              description: Arbitrary theme data (user can freely edit colors).
+
+    ThemeListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Theme"
+
+    ThemeSetActiveRequest:
+      type: object
+      required: [version, themeId]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        themeId:
+          type: string
+          format: uuid
+
+    UserMedia:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [assetId, type]
+          properties:
+            assetId:
+              type: string
+              format: uuid
+            type:
+              type: string
+              enum: [image]
+
+    UserMediaCreateRequest:
+      type: object
+      required: [assetId, type]
+      properties:
+        assetId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [image]
+
+    Asset:
+      allOf:
+        - $ref: "#/components/schemas/BaseEntity"
+        - type: object
+          required: [kind, localPath, mimeType, sizeBytes]
+          properties:
+            kind:
+              type: string
+              enum: [image]
+            localPath:
+              type: string
+              description: v1.0 local storage path returned to client (tunnel-accessible URL recommended).
+            mimeType:
+              type: string
+              example: image/jpeg
+            sizeBytes:
+              type: integer
+              minimum: 0
+            sha256:
+              type: string
+              nullable: true
+
+    AssetCreateRequest:
+      type: object
+      required: [kind, mimeType, sizeBytes, localPath]
+      properties:
+        kind:
+          type: string
+          enum: [image]
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+          minimum: 0
+        localPath:
+          type: string
+          description: Path or URL for local storage (v1.0). In practice, return a URL path usable by clients.
+        sha256:
+          type: string
+          nullable: true
+
+    AssetCreateResponse:
+      type: object
+      required: [id, serverNow, asset]
+      properties:
+        id:
+          type: string
+          format: uuid
+        serverNow:
+          type: string
+          format: date-time
+        asset:
+          $ref: "#/components/schemas/Asset"
+
+    # -----------------------
+    # Devices (Push)
+    # -----------------------
+    ApnsDeviceUpsertRequest:
+      type: object
+      required: [version, deviceId, token]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: For upsert, client should pass last known version; server may treat missing record as version=1.
+        deviceId:
+          type: string
+          maxLength: 200
+        token:
+          type: string
+          maxLength: 300
+
+    WebPushDeviceUpsertRequest:
+      type: object
+      required: [version, endpoint, p256dh, auth]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        endpoint:
+          type: string
+          maxLength: 2000
+        p256dh:
+          type: string
+          maxLength: 500
+        auth:
+          type: string
+          maxLength: 200
+
+    # -----------------------
+    # Warnings
+    # -----------------------
+    WarningType:
+      type: string
+      enum: [CONFLICT_LAST_WRITE_WINS]
+      description: Warning types for v1.0
+
+    Warning:
+      type: object
+      required: [id, householdId, createdAt, type, sourceEntityType, sourceEntityId]
+      properties:
+        id:
+          type: string
+          format: uuid
+        householdId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        type:
+          $ref: "#/components/schemas/WarningType"
+        sourceEntityType:
+          type: string
+          example: inventoryLot
+        sourceEntityId:
+          type: string
+          format: uuid
+        message:
+          type: string
+          nullable: true
+
+    WarningListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Warning"
